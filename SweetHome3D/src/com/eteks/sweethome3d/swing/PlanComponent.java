@@ -2004,10 +2004,75 @@ public class PlanComponent extends JComponent implements PlanView, Scrollable, P
   }
   
   /**
-   * Prints this component plan at the scale given in the home print attributes or at a scale 
-   * that makes it fill <code>pageFormat</code> imageable size if this attribute is <code>null</code>.
+   * Prints the plan of every viewable level of the home, one section of pages per level,
+   * in the order of the levels. The level selected before printing is restored once the
+   * requested page has been printed, including when no such page exists.
    */
   public int print(Graphics g, PageFormat pageFormat, int pageIndex) {
+    List<Level> viewableLevels = getViewableLevels();
+    if (viewableLevels.isEmpty()) {
+      // A home without levels has a single implicit plan
+      return printSelectedLevel(g, pageFormat, pageIndex);
+    }
+    Level selectedLevel = this.home.getSelectedLevel();
+    try {
+      int firstPageOfLevel = 0;
+      for (Level level : viewableLevels) {
+        this.home.setSelectedLevel(level);
+        int levelPageCount = getSelectedLevelPageCount(g, pageFormat);
+        if (pageIndex < firstPageOfLevel + levelPageCount) {
+          return printSelectedLevel(g, pageFormat, pageIndex - firstPageOfLevel);
+        }
+        firstPageOfLevel += levelPageCount;
+      }
+      return NO_SUCH_PAGE;
+    } finally {
+      // The selected level is temporary state of the home, restore it whatever happened above
+      this.home.setSelectedLevel(selectedLevel);
+    }
+  }
+
+  /**
+   * Returns the viewable levels of the home, in the order they are stored.
+   */
+  private List<Level> getViewableLevels() {
+    List<Level> viewableLevels = new ArrayList<Level>();
+    for (Level level : this.home.getLevels()) {
+      if (level.isViewable()) {
+        viewableLevels.add(level);
+      }
+    }
+    return viewableLevels;
+  }
+
+  /**
+   * Returns how many pages the plan of the selected level needs at the current print scale.
+   */
+  private int getSelectedLevelPageCount(Graphics g, PageFormat pageFormat) {
+    Rectangle2D printedItemBounds = getItemsBounds(g, getPaintedItems());
+    if (printedItemBounds == null) {
+      return 0;
+    } else if (this.home.getPrint() == null || this.home.getPrint().getPlanScale() == null) {
+      return 1;
+    } else {
+      float printScale = this.home.getPrint().getPlanScale().floatValue() * LengthUnit.centimeterToInch(72);
+      int pagesPerRow = (int)(printedItemBounds.getWidth() * printScale / pageFormat.getImageableWidth());
+      if (printedItemBounds.getWidth() * printScale != pageFormat.getImageableWidth()) {
+        pagesPerRow++;
+      }
+      int pagesPerColumn = (int)(printedItemBounds.getHeight() * printScale / pageFormat.getImageableHeight());
+      if (printedItemBounds.getHeight() * printScale != pageFormat.getImageableHeight()) {
+        pagesPerColumn++;
+      }
+      return pagesPerRow * pagesPerColumn;
+    }
+  }
+
+  /**
+   * Prints the plan of the selected level at the scale given in the home print attributes or at a scale 
+   * that makes it fill <code>pageFormat</code> imageable size if this attribute is <code>null</code>.
+   */
+  private int printSelectedLevel(Graphics g, PageFormat pageFormat, int pageIndex) {
     List<Selectable> printedItems = getPaintedItems(); 
     Rectangle2D printedItemBounds = getItemsBounds(g, printedItems);
     if (printedItemBounds != null) {

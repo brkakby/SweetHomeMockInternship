@@ -125,6 +125,7 @@ import com.eteks.sweethome3d.viewcontroller.View;
 public class FurnitureTable extends JTable implements View, Printable {
   private static final String EXPANDED_ROWS_VISUAL_PROPERTY = "com.eteks.sweethome3d.SweetHome3D.ExpandedGroups";
 
+  private Home                   home;
   private UserPreferences        preferences;
   private ListSelectionListener  tableSelectionListener;
   private boolean                selectionByUser;
@@ -147,6 +148,7 @@ public class FurnitureTable extends JTable implements View, Printable {
    */
   public FurnitureTable(Home home, UserPreferences preferences, 
                        FurnitureController controller) {
+    this.home = home;
     this.preferences = preferences;
     float resolutionScale = SwingTools.getResolutionScale();
     if (resolutionScale != 1) {
@@ -750,8 +752,16 @@ public class FurnitureTable extends JTable implements View, Printable {
           return headerRendererLabel;
         }
       };
+    List<TableColumn> printedColumns = new ArrayList<TableColumn>();
     for (int columnIndex = 0, n = columnModel.getColumnCount(); columnIndex < n; columnIndex++) {
-      final TableColumn tableColumn = columnModel.getColumn(columnIndex);
+      printedColumns.add(columnModel.getColumn(columnIndex));
+    }
+    TableColumn levelColumn = getPrintedLevelColumn(columnModel);
+    if (levelColumn != null) {
+      printedColumns.add(levelColumn);
+    }
+    for (int columnIndex = 0, n = printedColumns.size(); columnIndex < n; columnIndex++) {
+      final TableColumn tableColumn = printedColumns.get(columnIndex);
       // Create a printable column from existing table column
       TableColumn printableColumn = new TableColumn();
       printableColumn.setIdentifier(tableColumn.getIdentifier());
@@ -780,6 +790,36 @@ public class FurnitureTable extends JTable implements View, Printable {
       printableColumnModel.addColumn(printableColumn);
     }    
     return print(g, pageFormat, pageIndex, printableColumnModel, Color.BLACK);
+  }
+
+  /**
+   * Returns the column that should be appended to the printed columns to tell apart the
+   * furniture of the different levels, or <code>null</code> if the printed furniture can
+   * come from one level only or if that column is already displayed.
+   * The column model of this table is left untouched, so printing doesn't change whether
+   * the Level column is visible on screen.
+   */
+  private TableColumn getPrintedLevelColumn(TableColumnModel columnModel) {
+    if (!(columnModel instanceof FurnitureTableColumnModel)
+        || this.home == null) {
+      return null;
+    }
+    int viewableLevelCount = 0;
+    for (Level level : this.home.getLevels()) {
+      if (level.isViewable()) {
+        viewableLevelCount++;
+      }
+    }
+    if (viewableLevelCount < 2) {
+      return null;
+    }
+    for (int columnIndex = 0, n = columnModel.getColumnCount(); columnIndex < n; columnIndex++) {
+      if (HomePieceOfFurniture.SortableProperty.LEVEL == columnModel.getColumn(columnIndex).getIdentifier()) {
+        return null;
+      }
+    }
+    return ((FurnitureTableColumnModel)columnModel).getAvailableColumn(
+        HomePieceOfFurniture.SortableProperty.LEVEL);
   }
 
   /**
@@ -1033,6 +1073,14 @@ public class FurnitureTable extends JTable implements View, Printable {
         tableColumn.setHeaderRenderer(headerRenderer);
         this.availableColumns.put(columnProperty, tableColumn);
       }
+    }
+
+    /**
+     * Returns the column matching the given <code>property</code>, whether it is
+     * currently displayed or not.
+     */
+    public TableColumn getAvailableColumn(HomePieceOfFurniture.SortableProperty property) {
+      return this.availableColumns.get(property);
     }
 
     /**
